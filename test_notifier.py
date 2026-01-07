@@ -2,10 +2,11 @@
 import logging
 import sys
 import time
+import requests
+import feedparser
 from config import Config
 from post_parser import PostParser
 from discord_webhook import DiscordWebhook
-import feedparser
 
 # Configure logging
 logging.basicConfig(
@@ -44,7 +45,16 @@ def test_notifier(num_posts: int = 5):
     # Fetch the RSS feed
     logger.info(f"Fetching feed from: {config.REDDIT_RSS_URL}")
     try:
-        feed = feedparser.parse(config.REDDIT_RSS_URL)
+        # Reddit requires a User-Agent header
+        headers = {
+            'User-Agent': 'BrickSniperDiscord/1.0 (Reddit RSS Reader)'
+        }
+        
+        response = requests.get(config.REDDIT_RSS_URL, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Parse the feed content
+        feed = feedparser.parse(response.content)
         
         if feed.bozo and feed.bozo_exception:
             logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
@@ -66,7 +76,7 @@ def test_notifier(num_posts: int = 5):
             logger.info(f"\n--- Processing post {i}/{len(posts_to_send)} ---")
             
             # Parse the post
-            parsed_post = parser.parse_feed_entry(entry)
+            parsed_post = parser.parse_feed_entry(entry, affiliate_tag=config.AMAZON_AFFILIATE_TAG)
             
             if not parsed_post:
                 logger.warning(f"Failed to parse post {i}, skipping...")
@@ -82,7 +92,11 @@ def test_notifier(num_posts: int = 5):
                 logger.info(f"Image URL: {parsed_post.image_url}")
             
             # Format for Discord
-            payload = parser.format_for_discord(parsed_post)
+            payload = parser.format_for_discord(
+                parsed_post, 
+                affiliate_tag=config.AMAZON_AFFILIATE_TAG,
+                lego_role_mention=config.LEGO_ROLE_MENTION if config.LEGO_ROLE_MENTION else None
+            )
             
             # Send to Discord
             logger.info("Sending to Discord...")

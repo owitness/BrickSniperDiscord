@@ -15,6 +15,15 @@ class Config:
     # Subreddit to monitor (default: legodeal)
     SUBREDDIT = os.getenv("SUBREDDIT", "legodeal")
     
+    # Amazon affiliate tag (optional) - e.g., "yourtag-20"
+    # If set, Amazon links will be converted to affiliate links
+    AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "")
+    
+    # Discord role to mention for deals over 50% off (optional)
+    # Format: <@&ROLE_ID> or @LEGO (if role name is "LEGO")
+    # Leave empty to disable role mentions
+    LEGO_ROLE_MENTION = os.getenv("LEGO_ROLE_MENTION", "<@&ROLE_ID>")
+    
     # Polling interval in seconds (default: 2)
     POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "2"))
     

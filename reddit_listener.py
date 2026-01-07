@@ -2,6 +2,7 @@
 import logging
 import time
 import feedparser
+import requests
 from typing import Set, Callable, Optional
 from config import Config
 from post_parser import PostParser, ParsedPost
@@ -34,12 +35,26 @@ class RedditListener:
             Parsed feed object, or None if fetch fails
         """
         try:
-            feed = feedparser.parse(self.config.REDDIT_RSS_URL)
+            # Reddit requires a User-Agent header
+            headers = {
+                'User-Agent': 'BrickSniperDiscord/1.0 (Reddit RSS Reader)'
+            }
+            
+            response = requests.get(self.config.REDDIT_RSS_URL, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Parse the feed content
+            feed = feedparser.parse(response.content)
+            
             if feed.bozo and feed.bozo_exception:
                 logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
+            
             return feed
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch Reddit feed: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching feed: {e}")
             return None
     
     def _process_entry(self, entry: feedparser.FeedParserDict) -> None:
@@ -101,7 +116,7 @@ class RedditListener:
         feed = self._fetch_feed()
         if feed:
             for entry in feed.entries:
-                parsed_post = self.parser.parse_feed_entry(entry)
+        parsed_post = self.parser.parse_feed_entry(entry, affiliate_tag=self.config.AMAZON_AFFILIATE_TAG)
                 if parsed_post:
                     self.seen_posts.add(parsed_post.post_id)
             logger.info(f"Initialized with {len(self.seen_posts)} seen posts")

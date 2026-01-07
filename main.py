@@ -51,7 +51,11 @@ class RedditDiscordNotifier:
         logger.info(f"Processing new post: {post.title[:50]}...")
         
         # Format for Discord
-        payload = self.parser.format_for_discord(post)
+        payload = self.parser.format_for_discord(
+            post, 
+            affiliate_tag=self.config.AMAZON_AFFILIATE_TAG,
+            lego_role_mention=self.config.LEGO_ROLE_MENTION if self.config.LEGO_ROLE_MENTION else None
+        )
         
         # Send to Discord
         success = self.discord.send_post(payload)
