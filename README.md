@@ -1,6 +1,6 @@
 # BrickSniper Discord - Reddit Real-Time Notifier
 
-Real-time Reddit post monitoring for r/legodeal with instant Discord notifications.
+Real-time Reddit post monitoring for multiple subreddits (r/legodeal, r/legodeals, etc.) with instant Discord notifications.
 
 ## Features
 
@@ -9,6 +9,7 @@ Real-time Reddit post monitoring for r/legodeal with instant Discord notificatio
 - 🔗 **Link extraction**: Automatically detects and displays deal URLs
 - 📊 **Stateless**: No database required
 - 🛡️ **Duplicate prevention**: In-memory tracking prevents duplicate notifications
+- 🔀 **Multiple subreddits**: Monitor multiple subreddits simultaneously (e.g., r/legodeal, r/legodeals)
 
 ## Setup Instructions
 
@@ -40,11 +41,13 @@ pip install -r requirements.txt
    ```
 
 3. Optionally customize:
-   - `SUBREDDIT`: Subreddit to monitor (default: `legodeal`)
+   - `SUBREDDIT` or `SUBREDDITS`: Subreddit(s) to monitor (comma-separated, default: `legodeal,legodeals`)
+     - Examples: `legodeal`, `legodeal,legodeals`, `r/legodeal,r/legodeals`
+     - The bot will monitor all specified subreddits simultaneously
    - `AMAZON_AFFILIATE_TAG`: Your Amazon affiliate tag (e.g., `yourtag-20`)
      - If set, Amazon links in posts will automatically be converted to affiliate links
      - Leave empty to disable affiliate link conversion
-   - `POLL_INTERVAL`: Polling interval in seconds (default: `2`)
+   - `POLL_INTERVAL`: Polling interval in seconds (default: `10`)
 
 ### 4. Test the Setup (Optional)
 
@@ -61,10 +64,10 @@ python test_notifier.py --num-posts 3
 ```
 
 This will:
-- Fetch the latest posts from r/legodeal
+- Fetch the latest posts from all configured subreddits
 - Parse and format them
 - Send them to your Discord channel
-- Show a summary of successes/failures
+- Show a summary of successes/failures per subreddit
 
 ### 5. Run
 
@@ -72,17 +75,17 @@ This will:
 python main.py
 ```
 
-The bot will start monitoring r/legodeal and send notifications to your Discord channel.
+The bot will start monitoring all configured subreddits and send notifications to your Discord channel. Each notification will indicate which subreddit the post came from.
 
 ## Architecture
 
 ```
-Reddit RSS Feed → Event Listener → Parser/Filter → Discord Webhook
+Reddit RSS Feeds (Multiple) → Event Listeners (Threaded) → Parser/Filter → Discord Webhook
 ```
 
-- **Event Listener**: Polls Reddit RSS feed every 1-2 seconds
+- **Event Listeners**: One listener per subreddit, each polling its RSS feed every 10 seconds (configurable)
 - **Parser**: Extracts post title, URL, body text, and first outbound link
-- **Discord Webhook**: Sends formatted embed messages instantly
+- **Discord Webhook**: Sends formatted embed messages instantly with subreddit identification
 
 ## Message Format
 
@@ -91,12 +94,14 @@ Each notification includes:
 - **Description**: Post body text
 - **Image**: Automatically detected images from the post (if any)
 - **Link Field**: First detected URL from the post (if any, and different from image)
+- **Footer**: Shows which subreddit the post came from (e.g., "r/legodeal" or "r/legodeals")
 
 ## Troubleshooting
 
 - **No notifications**: Check that your webhook URL is correct and the bot has permission to post in the channel
-- **Rate limiting**: Discord webhooks allow ~30 messages/minute. r/legodeal volume is typically low enough to stay within limits
-- **Duplicate messages**: The bot tracks seen posts in memory. Restarting will reset this (duplicates may appear after restart)
+- **Rate limiting**: Discord webhooks allow ~30 messages/minute. With multiple subreddits, you may hit rate limits if there are many posts. Consider increasing `POLL_INTERVAL` if needed
+- **Duplicate messages**: The bot tracks seen posts in memory per subreddit. Restarting will reset this (duplicates may appear after restart)
+- **Multiple subreddits**: Each subreddit runs in its own thread. If one subreddit has issues, others will continue to work
 
 ## Converting to Discord Application (Multi-Server Bot)
 
@@ -441,7 +446,6 @@ systemctl restart bricksniper # Restart the service
 ## Future Enhancements
 
 - WebSocket stream integration for even lower latency
-- Multiple subreddit support
 - Database for duplicate tracking across restarts
 - Historical backfill
 - Rate limit monitoring

@@ -13,19 +13,23 @@ logger = logging.getLogger(__name__)
 class RedditListener:
     """Listens for new Reddit posts via RSS feed polling."""
     
-    def __init__(self, config: Config, on_new_post: Callable[[ParsedPost], None]):
+    def __init__(self, subreddit: str, config: Config, on_new_post: Callable[[ParsedPost], None]):
         """
         Initialize Reddit listener.
         
         Args:
+            subreddit: Subreddit name to monitor (without r/ prefix)
             config: Application configuration
             on_new_post: Callback function called when a new post is detected
         """
+        # Remove 'r/' prefix if present
+        self.subreddit = subreddit[2:] if subreddit.startswith("r/") else subreddit
         self.config = config
         self.on_new_post = on_new_post
         self.seen_posts: Set[str] = set()
         self.running = False
         self.parser = PostParser()
+        self.rss_url = Config.get_rss_url(self.subreddit)
     
     def _fetch_feed(self) -> Optional[feedparser.FeedParserDict]:
         """
@@ -40,7 +44,7 @@ class RedditListener:
                 'User-Agent': 'BrickSniperDiscord/1.0 (Reddit RSS Reader)'
             }
             
-            response = requests.get(self.config.REDDIT_RSS_URL, headers=headers, timeout=10)
+            response = requests.get(self.rss_url, headers=headers, timeout=10)
             
             # Handle rate limiting (429)
             if response.status_code == 429:
@@ -53,7 +57,7 @@ class RedditListener:
                 logger.warning(f"Rate limited by Reddit. Waiting {retry_seconds} seconds before retry...")
                 time.sleep(retry_seconds)
                 # Retry once after waiting
-                response = requests.get(self.config.REDDIT_RSS_URL, headers=headers, timeout=10)
+                response = requests.get(self.rss_url, headers=headers, timeout=10)
             
             response.raise_for_status()
             
@@ -126,8 +130,8 @@ class RedditListener:
     
     def start(self) -> None:
         """Start the listener (blocking)."""
-        logger.info(f"Starting Reddit listener for r/{self.config.SUBREDDIT}")
-        logger.info(f"RSS URL: {self.config.REDDIT_RSS_URL}")
+        logger.info(f"Starting Reddit listener for r/{self.subreddit}")
+        logger.info(f"RSS URL: {self.rss_url}")
         logger.info(f"Polling interval: {self.config.POLL_INTERVAL} seconds")
         
         self.running = True

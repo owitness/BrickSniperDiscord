@@ -42,85 +42,110 @@ def test_notifier(num_posts: int = 5):
     discord = DiscordWebhook(config.DISCORD_WEBHOOK_URL)
     parser = PostParser()
     
-    # Fetch the RSS feed
-    logger.info(f"Fetching feed from: {config.REDDIT_RSS_URL}")
-    try:
-        # Reddit requires a User-Agent header
-        headers = {
-            'User-Agent': 'BrickSniperDiscord/1.0 (Reddit RSS Reader)'
-        }
+    # Process each subreddit
+    subreddits = config.SUBREDDITS
+    logger.info(f"Testing {len(subreddits)} subreddit(s): {', '.join(f'r/{s}' for s in subreddits)}")
+    
+    total_success = 0
+    total_fail = 0
+    
+    for subreddit in subreddits:
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"Testing r/{subreddit}")
+        logger.info(f"{'=' * 60}")
         
-        response = requests.get(config.REDDIT_RSS_URL, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Parse the feed content
-        feed = feedparser.parse(response.content)
-        
-        if feed.bozo and feed.bozo_exception:
-            logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
-        
-        if not feed.entries:
-            logger.error("No entries found in feed. The subreddit may be empty or the feed may be unavailable.")
-            sys.exit(1)
-        
-        logger.info(f"Found {len(feed.entries)} entries in feed")
-        
-        # Process the last N posts (feedparser returns newest first)
-        posts_to_send = feed.entries[:num_posts]
-        logger.info(f"Processing {len(posts_to_send)} posts...")
-        
-        success_count = 0
-        fail_count = 0
-        
-        for i, entry in enumerate(posts_to_send, 1):
-            logger.info(f"\n--- Processing post {i}/{len(posts_to_send)} ---")
+        # Fetch the RSS feed
+        rss_url = Config.get_rss_url(subreddit)
+        logger.info(f"Fetching feed from: {rss_url}")
+        try:
+            # Reddit requires a User-Agent header
+            headers = {
+                'User-Agent': 'BrickSniperDiscord/1.0 (Reddit RSS Reader)'
+            }
             
-            # Parse the post
-            parsed_post = parser.parse_feed_entry(entry, affiliate_tag=config.AMAZON_AFFILIATE_TAG)
+            response = requests.get(rss_url, headers=headers, timeout=10)
+            response.raise_for_status()
             
-            if not parsed_post:
-                logger.warning(f"Failed to parse post {i}, skipping...")
-                fail_count += 1
+            # Parse the feed content
+            feed = feedparser.parse(response.content)
+            
+            if feed.bozo and feed.bozo_exception:
+                logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
+            
+            if not feed.entries:
+                logger.warning(f"No entries found in r/{subreddit}. The subreddit may be empty or the feed may be unavailable.")
                 continue
             
-            logger.info(f"Title: {parsed_post.title[:60]}...")
-            logger.info(f"Post ID: {parsed_post.post_id}")
-            logger.info(f"URL: {parsed_post.url}")
-            if parsed_post.detected_link:
-                logger.info(f"Detected link: {parsed_post.detected_link}")
-            if parsed_post.image_url:
-                logger.info(f"Image URL: {parsed_post.image_url}")
+            logger.info(f"Found {len(feed.entries)} entries in feed")
             
-            # Format for Discord
-            payload = parser.format_for_discord(
-                parsed_post, 
-                affiliate_tag=config.AMAZON_AFFILIATE_TAG,
-                lego_role_mention=config.LEGO_ROLE_MENTION if config.LEGO_ROLE_MENTION else None
-            )
+            # Process the last N posts (feedparser returns newest first)
+            posts_to_send = feed.entries[:num_posts]
+            logger.info(f"Processing {len(posts_to_send)} posts from r/{subreddit}...")
             
-            # Send to Discord
-            logger.info("Sending to Discord...")
-            success = discord.send_post(payload)
+            success_count = 0
+            fail_count = 0
             
-            if success:
-                logger.info(f"✓ Successfully sent post {i}")
-                success_count += 1
-            else:
-                logger.error(f"✗ Failed to send post {i}")
-                fail_count += 1
+            for i, entry in enumerate(posts_to_send, 1):
+                logger.info(f"\n--- Processing post {i}/{len(posts_to_send)} from r/{subreddit} ---")
+                
+                # Parse the post
+                parsed_post = parser.parse_feed_entry(entry, affiliate_tag=config.AMAZON_AFFILIATE_TAG)
+                
+                if not parsed_post:
+                    logger.warning(f"Failed to parse post {i}, skipping...")
+                    fail_count += 1
+                    continue
+                
+                logger.info(f"Title: {parsed_post.title[:60]}...")
+                logger.info(f"Post ID: {parsed_post.post_id}")
+                logger.info(f"URL: {parsed_post.url}")
+                if parsed_post.detected_link:
+                    logger.info(f"Detected link: {parsed_post.detected_link}")
+                if parsed_post.image_url:
+                    logger.info(f"Image URL: {parsed_post.image_url}")
+                
+                # Format for Discord
+                payload = parser.format_for_discord(
+                    parsed_post, 
+                    affiliate_tag=config.AMAZON_AFFILIATE_TAG,
+                    lego_role_mention=config.LEGO_ROLE_MENTION if config.LEGO_ROLE_MENTION else None,
+                    subreddit=subreddit
+                )
+                
+                # Send to Discord
+                logger.info("Sending to Discord...")
+                success = discord.send_post(payload)
+                
+                if success:
+                    logger.info(f"✓ Successfully sent post {i} from r/{subreddit}")
+                    success_count += 1
+                else:
+                    logger.error(f"✗ Failed to send post {i} from r/{subreddit}")
+                    fail_count += 1
+                
+                # Small delay between posts to avoid rate limiting
+                if i < len(posts_to_send):
+                    time.sleep(1)
             
-            # Small delay between posts to avoid rate limiting
-            if i < len(posts_to_send):
-                time.sleep(1)
+            total_success += success_count
+            total_fail += fail_count
+            
+            logger.info(f"\n--- Summary for r/{subreddit} ---")
+            logger.info(f"Successfully sent: {success_count}")
+            logger.info(f"Failed: {fail_count}")
         
-        # Summary
-        logger.info("\n" + "=" * 60)
-        logger.info("Test Summary")
-        logger.info("=" * 60)
-        logger.info(f"Total posts processed: {len(posts_to_send)}")
-        logger.info(f"Successfully sent: {success_count}")
-        logger.info(f"Failed: {fail_count}")
-        logger.info("=" * 60)
+        except Exception as e:
+            logger.error(f"Error processing r/{subreddit}: {e}", exc_info=True)
+            continue
+    
+    # Overall Summary
+    logger.info("\n" + "=" * 60)
+    logger.info("Overall Test Summary")
+    logger.info("=" * 60)
+    logger.info(f"Subreddits tested: {len(subreddits)}")
+    logger.info(f"Total posts successfully sent: {total_success}")
+    logger.info(f"Total posts failed: {total_fail}")
+    logger.info("=" * 60)
         
     except Exception as e:
         logger.error(f"Fatal error during test: {e}", exc_info=True)

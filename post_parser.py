@@ -427,23 +427,27 @@ class PostParser:
             return None
     
     @staticmethod
-    def format_for_discord(post: ParsedPost, affiliate_tag: Optional[str] = None, lego_role_mention: Optional[str] = None) -> Dict[str, Any]:
+    def format_for_discord(post: ParsedPost, affiliate_tag: Optional[str] = None, lego_role_mention: Optional[str] = None, subreddit: Optional[str] = None) -> Dict[str, Any]:
         """
         Format a ParsedPost for Discord webhook payload.
         
         Args:
             post: ParsedPost to format
+            affiliate_tag: Optional Amazon affiliate tag
+            lego_role_mention: Optional role mention string
+            subreddit: Subreddit name (without r/ prefix) for footer display
             
         Returns:
             Discord webhook payload dictionary
         """
+        subreddit_display = f"r/{subreddit}" if subreddit else "r/legodeal"
         embed = {
             "title": post.title,
             "url": post.url,
             "description": post.selftext[:2000] if post.selftext else "No description",  # Discord limit is 4096 for description, but we'll keep it shorter
             "color": 16711680,  # Red color
             "footer": {
-                "text": f"r/legodeal"
+                "text": subreddit_display
             },
             "timestamp": None  # Will be set by Discord if available
         }
