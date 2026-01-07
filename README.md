@@ -312,13 +312,109 @@ Consider using SQLite or PostgreSQL for multi-server configuration.
    - Systemd service handles this automatically
    - Verify: `systemctl is-enabled bricksniper`
 
+### 24/7 Operation
+
+Yes, the application will run 24/7 once configured with systemd. Here's how:
+
+**Automatic Startup:**
+- `WantedBy=multi-user.target` ensures the service starts automatically when the server boots
+- The service starts after the network is available (`After=network.target`)
+
+**Automatic Restart:**
+- `Restart=always` means systemd will automatically restart the bot if it crashes or stops
+- `RestartSec=10` waits 10 seconds before restarting (prevents restart loops)
+
+**What This Means:**
+- ✅ Runs continuously without manual intervention
+- ✅ Automatically recovers from crashes
+- ✅ Starts automatically after server reboots
+- ✅ Survives Proxmox host restarts (if container/VM auto-starts)
+
+**To Verify It's Running:**
+```bash
+systemctl status bricksniper  # Should show "active (running)"
+systemctl is-enabled bricksniper  # Should show "enabled"
+```
+
+**To Stop/Start Manually (if needed):**
+```bash
+systemctl stop bricksniper    # Stop the service
+systemctl start bricksniper   # Start the service
+systemctl restart bricksniper # Restart the service
+```
+
 ### Troubleshooting Proxmox Hosting
 
-- **Service won't start**: Check logs with `journalctl -u bricksniper`
-- **Permission errors**: Ensure `.env` file is readable: `chmod 600 .env`
-- **Network issues**: Test connectivity: `ping 8.8.8.8`
-- **Python path issues**: Use full path in systemd service: `/opt/bricksniper/venv/bin/python`
-- **Resource exhaustion**: Increase container/VM limits in Proxmox
+**Service Won't Start:**
+
+1. **Check the logs** (most important):
+   ```bash
+   journalctl -u bricksniper -n 50 --no-pager
+   ```
+   This will show you the exact error message.
+
+2. **Test manually** to see the error:
+   ```bash
+   cd /opt/bricksniper
+   source venv/bin/activate
+   python main.py
+   ```
+
+3. **Common issues and fixes**:
+
+   - **Missing .env file**:
+     ```bash
+     ls -la /opt/bricksniper/.env
+     # If missing, copy from example:
+     cp /opt/bricksniper/.env.example /opt/bricksniper/.env
+     nano /opt/bricksniper/.env  # Edit with your values
+     ```
+
+   - **Python path issues**:
+     ```bash
+     # Verify Python exists
+     /opt/bricksniper/venv/bin/python --version
+     # If error, recreate venv:
+     cd /opt/bricksniper
+     python3 -m venv venv --clear
+     source venv/bin/activate
+     pip install -r requirements.txt
+     ```
+
+   - **Missing dependencies**:
+     ```bash
+     cd /opt/bricksniper
+     source venv/bin/activate
+     pip install -r requirements.txt
+     ```
+
+   - **Permission errors**:
+     ```bash
+     chmod 600 /opt/bricksniper/.env
+     chown root:root /opt/bricksniper/.env
+     ```
+
+   - **Invalid webhook URL in .env**:
+     ```bash
+     # Check your .env file
+     cat /opt/bricksniper/.env
+     # Make sure DISCORD_WEBHOOK_URL is complete and correct
+     ```
+
+   - **Network issues**: Test connectivity:
+     ```bash
+     ping 8.8.8.8
+     curl https://www.reddit.com/r/legodeal/new/.rss
+     ```
+
+   - **Resource exhaustion**: Increase container/VM limits in Proxmox
+
+4. **After fixing, restart the service**:
+   ```bash
+   systemctl daemon-reload
+   systemctl restart bricksniper
+   systemctl status bricksniper
+   ```
 
 ### Security Considerations
 

@@ -41,6 +41,20 @@ class RedditListener:
             }
             
             response = requests.get(self.config.REDDIT_RSS_URL, headers=headers, timeout=10)
+            
+            # Handle rate limiting (429)
+            if response.status_code == 429:
+                retry_after = response.headers.get('Retry-After', '60')
+                try:
+                    retry_seconds = int(retry_after)
+                except ValueError:
+                    retry_seconds = 60
+                
+                logger.warning(f"Rate limited by Reddit. Waiting {retry_seconds} seconds before retry...")
+                time.sleep(retry_seconds)
+                # Retry once after waiting
+                response = requests.get(self.config.REDDIT_RSS_URL, headers=headers, timeout=10)
+            
             response.raise_for_status()
             
             # Parse the feed content
@@ -50,6 +64,12 @@ class RedditListener:
                 logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
             
             return feed
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                logger.error(f"Rate limited by Reddit: {e}")
+            else:
+                logger.error(f"Failed to fetch Reddit feed: {e}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to fetch Reddit feed: {e}")
             return None
@@ -64,7 +84,7 @@ class RedditListener:
         Args:
             entry: Feed entry to process
         """
-        parsed_post = self.parser.parse_feed_entry(entry)
+        parsed_post = self.parser.parse_feed_entry(entry, affiliate_tag=self.config.AMAZON_AFFILIATE_TAG)
         
         if not parsed_post:
             logger.debug("Failed to parse feed entry, skipping")
@@ -90,7 +110,8 @@ class RedditListener:
         feed = self._fetch_feed()
         
         if not feed:
-            logger.warning("Failed to fetch feed, will retry on next poll")
+            # Don't log warning for rate limits - already logged in _fetch_feed
+            # Only log if it's a different error
             return
         
         # Process entries in reverse order (oldest first) to maintain chronological order
@@ -116,24 +137,36 @@ class RedditListener:
         feed = self._fetch_feed()
         if feed:
             for entry in feed.entries:
-        parsed_post = self.parser.parse_feed_entry(entry, affiliate_tag=self.config.AMAZON_AFFILIATE_TAG)
+                parsed_post = self.parser.parse_feed_entry(entry, affiliate_tag=self.config.AMAZON_AFFILIATE_TAG)
                 if parsed_post:
                     self.seen_posts.add(parsed_post.post_id)
             logger.info(f"Initialized with {len(self.seen_posts)} seen posts")
         
         # Start polling loop
+        consecutive_failures = 0
         while self.running:
             try:
                 self._poll_once()
+                # Reset failure counter on success
+                consecutive_failures = 0
             except KeyboardInterrupt:
                 logger.info("Received keyboard interrupt, stopping...")
                 self.stop()
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in poll loop: {e}")
+                consecutive_failures += 1
             
             if self.running:
-                time.sleep(self.config.POLL_INTERVAL)
+                # Use exponential backoff if we're getting rate limited
+                # Check if last fetch failed with 429
+                sleep_time = self.config.POLL_INTERVAL
+                if consecutive_failures > 0:
+                    # Exponential backoff: 10s, 20s, 40s, max 60s
+                    sleep_time = min(self.config.POLL_INTERVAL * (2 ** min(consecutive_failures, 3)), 60)
+                    logger.info(f"Using backoff: sleeping {sleep_time} seconds before next poll")
+                
+                time.sleep(sleep_time)
     
     def stop(self) -> None:
         """Stop the listener."""

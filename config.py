@@ -24,8 +24,9 @@ class Config:
     # Leave empty to disable role mentions
     LEGO_ROLE_MENTION = os.getenv("LEGO_ROLE_MENTION", "<@&ROLE_ID>")
     
-    # Polling interval in seconds (default: 2)
-    POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "2"))
+    # Polling interval in seconds (default: 10)
+    # Reddit rate limits aggressive polling. 10 seconds is safer.
+    POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
     
     # Reddit RSS feed URL
     @property
