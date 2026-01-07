@@ -4,6 +4,7 @@ import time
 import feedparser
 import requests
 from typing import Set, Callable, Optional
+from datetime import datetime, timedelta, timezone
 from config import Config
 from post_parser import PostParser, ParsedPost
 
@@ -93,6 +94,25 @@ class RedditListener:
         if not parsed_post:
             logger.debug("Failed to parse feed entry, skipping")
             return
+        
+        # Time-based filtering: only process posts less than 7 days old
+        # This prevents processing very old posts if the seen_posts set is lost
+        if parsed_post.published_time:
+            # Convert to naive datetime for comparison if needed
+            published = parsed_post.published_time
+            if published.tzinfo:
+                # Convert to UTC and remove timezone info for comparison
+                published = published.astimezone(timezone.utc).replace(tzinfo=None)
+            
+            now = datetime.utcnow()
+            post_age = now - published
+            max_age = timedelta(days=7)
+            
+            if post_age > max_age:
+                logger.debug(f"Post {parsed_post.post_id} is {post_age.days} days old, skipping (max age: {max_age.days} days)")
+                # Still mark as seen to avoid processing it again
+                self.seen_posts.add(parsed_post.post_id)
+                return
         
         # Check if we've seen this post before
         if parsed_post.post_id in self.seen_posts:

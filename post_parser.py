@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass
@@ -17,6 +18,7 @@ class ParsedPost:
     detected_link: Optional[str] = None
     image_url: Optional[str] = None
     discount_percentage: Optional[int] = None
+    published_time: Optional[datetime] = None
 
 
 class HTMLTextExtractor(HTMLParser):
@@ -413,6 +415,22 @@ class PostParser:
                 if image_urls:
                     image_url = image_urls[0]  # Use first image found
             
+            # Extract published timestamp
+            published_time = None
+            if "published_parsed" in entry and entry["published_parsed"]:
+                # published_parsed is a time.struct_time tuple
+                try:
+                    published_time = datetime(*entry["published_parsed"][:6])
+                except (ValueError, TypeError):
+                    pass
+            elif "published" in entry:
+                # Fallback to parsing the published string
+                try:
+                    # Feedparser should have parsed this, but try manual parsing if needed
+                    published_time = datetime.fromisoformat(entry["published"].replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    pass
+            
             return ParsedPost(
                 post_id=post_id,
                 title=title,
@@ -420,7 +438,8 @@ class PostParser:
                 selftext=selftext,
                 detected_link=detected_link,
                 image_url=image_url,
-                discount_percentage=discount_percentage
+                discount_percentage=discount_percentage,
+                published_time=published_time
             )
         except (KeyError, AttributeError, IndexError) as e:
             # Log error but don't crash
