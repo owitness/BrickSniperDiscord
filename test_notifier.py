@@ -146,10 +146,6 @@ def test_notifier(num_posts: int = 5):
     logger.info(f"Total posts successfully sent: {total_success}")
     logger.info(f"Total posts failed: {total_fail}")
     logger.info("=" * 60)
-        
-    except Exception as e:
-        logger.error(f"Fatal error during test: {e}", exc_info=True)
-        sys.exit(1)
 
 
 def main():
